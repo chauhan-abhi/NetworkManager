@@ -28,6 +28,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.google.android.gms.gcm.GcmNetworkManager;
+import com.google.android.gms.gcm.OneoffTask;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
@@ -38,6 +41,8 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     public static final String TASK_ID_PREFIX = "task-id";
+
+    private GcmNetworkManager mGcmNetworkManager;
 
     private class LoadTask extends AsyncTask<Void, Void, List<TaskItem>> {
 
@@ -83,8 +88,21 @@ public class MainActivity extends AppCompatActivity {
             mRecyclerView.scrollToPosition(0);
 
             if (taskItem.getType().equals(TaskItem.ONEOFF_TASK)) {
+                Bundle bundle = new Bundle();
+                bundle.putString(CodelabUtil.TASK_ID, taskItem.getId());
+
                 // Schedule oneoff task.
-                Log.d(TAG, "oneoff task scheduling not implemented.");
+                OneoffTask oneoffTask = new OneoffTask.Builder()
+                        .setService(BestTimeService.class)
+                        .setTag(taskItem.getId())
+                        .setRequiredNetwork(OneoffTask.NETWORK_STATE_CONNECTED)
+                        // Use an execution window of 30 seconds or more. Less than 30
+                        // seconds would not allow GcmNetworkManager enough time to
+                        // optimize the next best time to execute your task.
+                        .setExecutionWindow(0, 30)
+                        .setExtras(bundle)
+                        .build();
+                mGcmNetworkManager.schedule(oneoffTask);
             } else {
                 // Immediately make network call.
                 Intent nowIntent = new Intent(mContext, NowIntentService.class);
@@ -106,6 +124,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        mGcmNetworkManager = GcmNetworkManager.getInstance(this);
+
         mTaskAdapter = new TaskAdapter(new ArrayList<TaskItem>());
 
         LinearLayoutManager linearLayoutManager = new LinearLayoutManager(this);
@@ -116,8 +136,12 @@ public class MainActivity extends AppCompatActivity {
         bestTimeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Toast.makeText(view.getContext(), "Oneoff tasks are not implemented.", Toast.LENGTH_SHORT).show();
-            }
+                String taskId = TASK_ID_PREFIX +
+                        Calendar.getInstance().getTimeInMillis();
+                Log.d(TAG, "Scheduling oneoff task. " + taskId);
+                TaskItem taskItem = new TaskItem(taskId, TaskItem.ONEOFF_TASK,
+                        TaskItem.PENDING_STATUS);
+                new AddTask(view.getContext()).execute(taskItem);            }
         });
 
         Button nowButton = (Button) findViewById(R.id.nowButton);
